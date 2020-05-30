@@ -1,0 +1,236 @@
+```{r setup, include=FALSE}
+library(quantmod)
+library(readxl)
+TNX<-read_excel("C:/Users/user/Documents/Jill/Universidad/Noveno semestre/Econometria Financiera/^TNX.xlsx")
+symbols=c('SP','ECL','BABA','TWTR','CAT')# Vector de caracteres
+getSymbols(symbols,src='yahoo',from="2018-01-01",to="2020-01-01")
+
+```
+```{r}
+par(mfrow=c(2,3))
+plot(SP$SP.Close, col="pink",main = "SP")
+plot(ECL$ECL.Close, col="green",main = "ECOLAP")
+plot(BABA$BABA.Close,col="orange",main="ALIBABA")
+plot(TWTR$TWTR.Close,col="blue",main="TWITTER")
+plot(CAT$CAT.Close,col="yellow",main="CATERPILLAR")
+plot(TNX$Adj.Close,col="brown",main="Treasury Yield 10 Years")
+```
+```{r}
+library(TSA)
+library(tseries)
+library(corrgram)
+library(forecast)
+library(fGarch)
+library(timeDate)
+library(timeSeries)
+library(fBasics)
+library(lmtest)
+library(rugarch)
+library(fPortfolio)
+library(parallel)
+library(fAssets)
+library(ggplot2)
+```
+```{r}
+SP = Delt(SP$SP.Close)
+SP =SP[-1,]
+
+BABA = Delt(BABA$BABA.Close)
+BABA=BABA[-1,]
+
+ECL = Delt(ECL$ECL.Close)
+ECL=ECL[-1,]
+
+TWTR =Delt(TWTR$TWTR.Close)
+TWTR=TWTR[-1,]
+
+CAT = Delt(CAT$CAT.Close)
+CAT=CAT[-1,]
+
+R_tnx<-diff(log(TNX$Adj.Close))
+
+
+
+```
+
+```{r}
+par(mfrow=c(2,3))
+plot(BABA,col = "orange")
+plot(ECL, col = "green")
+plot(TWTR,col = "blue")
+plot(CAT,col = "yellow")
+plot(R_tnx,col ="brown")
+plot(SP,col="pink")
+summary(BABA)
+summary(ECL)
+summary(TWTR)
+summary(CAT)
+summary(SP)
+summary(R_tnx)
+```
+```{r}
+rendimiento1<-c(mean(SP), mean(BABA), mean(ECL), mean(CAT),mean(TWTR),mean(R_tnx))
+volatilidad1<-c(sd(SP), sd(BABA), sd(ECL), sd(CAT),sd(TWTR),sd(R_tnx))
+#en esta tabla pongo la media y la volatilidad de cada uno de mis activos 
+tabla2<-data.frame(rbind(rendimiento1, volatilidad1))
+colnames(tabla2)<-c("SP","BABA","ECOLAP","CATTERPILLAR","TWITTER","Treasury Yield 10 Years")
+tabla2*100
+```
+```{r}
+sharpe1<-(rendimiento1-mean(R_tnx))/volatilidad1
+sharpe1
+```
+```{r}
+retornos1<-cbind(BABA,ECL,CAT,TWTR)
+colnames(retornos1)<-c("BABA","ECOLAP","CATERPILLAR","TWITTER")
+cov<-cov(retornos1)*100
+cov
+
+cor<-cor(retornos1)*100
+cor
+```
+
+```{r}
+espcartera1<-portfolioSpec()
+setRiskFreeRate(espcartera1)<- -0.04987801
+setNFrontierPoints(espcartera1) <- 20
+Frontera1 <- portfolioFrontier(as.timeSeries(retornos1),spec=espcartera1 )
+Frontera1
+
+```
+
+
+
+```{r}
+##Graficar frontera eficiente
+frontierPlot(Frontera1)
+grid()
+#aqui le digo que me ponga en rojo el punto tangente 
+tangencyPoints(Frontera1, pch = 19, col = "red", cex=2)
+# que en verde me ponga la línea 
+tangencyLines(Frontera1, col="darkgreen", pch=19, cex=2)
+#que en azul me ponga el punto de mínima varianza 
+minvariancePoints(Frontera1, col="blue", pch=19, cex=2)
+#en verde simulación via montecarlo de todos los posibles portafolios 
+monteCarloPoints(Frontera1, col="green", cex=0.001)
+
+```
+```{r}
+##Portafolios
+#estos serían los pesos bajo los cuales se geeraría un portafolio eficiente 
+efPortfolio1 <- efficientPortfolio(as.timeSeries(retornos1),espcartera1)
+efPortfolio1
+
+tgPortfolio1 <- tangencyPortfolio(as.timeSeries(retornos1),espcartera1)
+tgPortfolio1
+
+```
+```{r}
+##Retornos del portafolio
+R_Pf1<-0.0609*BABA+0.8528*ECL+0.0601*CAT+0.0262*TWTR
+#con ese armo el tema del capm 
+```
+```{r}
+Ri_Pf1<-R_Pf1-SP
+Rm_Rf1<-SP-R_tnx
+capm2<- lm(Ri_Pf1~Rm_Rf1)
+summary(capm2)
+```
+```{r}
+R_Wti<-diff(log(TNX$WTI))
+R_nasdaq<-diff(log(TNX$NASDAQ))
+R_doll.eu<-diff(log(TNX$`Dollar/Euro`))
+capm3<-lm(Ri_Pf1 ~ Rm_Rf1 + R_Wti + R_nasdaq + R_doll.eu)
+summary(capm3)
+```
+```{r}
+capm4<-lm(Ri_Pf1 ~ Rm_Rf1 + R_Wti + R_nasdaq )
+summary(capm4)
+```
+```{r}
+capm5<-lm(Ri_Pf1 ~ Rm_Rf1 + R_nasdaq )
+summary(capm5)
+```
+
+```{r}
+##Validación de supuestos
+e1<-residuals(capm5)
+
+### Normalidad
+par(mfrow=c(1,2))
+qqnorm(scale(e1))
+qqline(scale(e1),col="blue")
+
+histograma<-function(capm5, nbreaks=12) {
+  hist(e1, breaks=nbreaks, freq=FALSE, main="Histograma de residuales")
+  rug(jitter(e1), col="red")
+  curve(dnorm(x,mean=mean(e1), sd=sd(e1)), add=TRUE, col="blue", lwd=2)
+  lines(density(e1)$x, density(e1)$y, col="yellow", lwd=2, lty=2)
+}
+par(mfrow=c(1,1))
+histograma(capm5)
+
+jarque.bera.test(e1)
+ks.test(e1,"pnorm")
+
+```
+```{r}
+### No autocorrelación
+plot(scale(e1),type="l",main="Residuales")
+par(mfrow=c(1,2))
+acf(e1)
+pacf(e1)
+
+acf_e1 <- acf(e1, plot=FALSE, lag.max=36)$acf
+pacf_e1 <- pacf(e1, plot=FALSE, lag.max=36)$acf
+
+Q_stats <- c()
+Q_pvals <- c()
+for (i in 1:36) {
+  Q = Box.test(e1, lag=i)
+  Q_stats[[i]] <- Q$statistic
+  Q_pvals[[i]] <- Q$p.value
+}
+corrgram <- cbind(LAG=seq(1,36), ACF=acf_e1, PACF=pacf_e1, Q=Q_stats, "Prob>Q"=Q_pvals)
+corrgram
+
+```
+```{r}
+###Homocedasticidad
+e1_cuad=(e1-mean(e1))^2
+
+par(mfrow=c(1,2))
+acf(e1_cuad)
+pacf(e1_cuad)
+
+acf_e1c <- acf(e1_cuad, plot=FALSE, lag.max=12)$acf
+pacf_e1c <- pacf(e1_cuad, plot=FALSE, lag.max=12)$acf
+
+Q_stats <- c()
+Q_pvals <- c()
+for (i in 1:12) {
+  Q = Box.test(e1_cuad, lag=i)
+  Q_stats[[i]] <- Q$statistic
+  Q_pvals[[i]] <- Q$p.value
+}
+corrgram <- cbind(LAG=seq(1,12), ACF=acf_e1c, PACF=pacf_e1c, Q=Q_stats, "Prob>Q"=Q_pvals)
+corrgram
+
+```
+
+
+
+
+
+
+
+
+
+```{r}
+###Estimar modelo de heterocedasticidad condicionada GJR
+variable<-cbind(Rm_Rf1,R_nasdaq)
+mod1<-ugarchspec(variance.model=list(model="gjrGARCH",garchOrder=c(1,1)), mean.model=list(armaOrder=c(0,0),include.mean=FALSE,external.regressors = variable, archm=FALSE,arfima=FALSE),distribution.model="ged")
+modelo1<-ugarchfit(spec=mod1,data=Ri_Pf1)
+show(modelo1)
+
+```
